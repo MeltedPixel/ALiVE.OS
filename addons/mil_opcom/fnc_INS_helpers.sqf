@@ -637,7 +637,7 @@ ALiVE_fnc_INS_recruit = {
 
                 // Recruit 5 times
                 [_pos,_size,_id,_faction,_HQ,_sides,_agents] spawn {
-                    private ["_pos","_size","_id","_faction","_targetBuilding","_sides","_agents","_created"];
+                    private ["_pos","_size","_id","_faction","_targetBuilding","_sides","_agents","_created","_group","_recruits"];
 
                     _pos = _this select 0;
                     _size = _this select 1;
@@ -649,6 +649,9 @@ ALiVE_fnc_INS_recruit = {
                     _allSides = ["EAST","WEST","GUER"];
 
                     _created = 0;
+                    
+                    // Use Infantry group as default.
+                    _group = ["Infantry",_faction] call ALIVE_fnc_configGetRandomGroup;
 
                     for "_i" from 1 to (count _agents) do {
 
@@ -660,15 +663,20 @@ ALiVE_fnc_INS_recruit = {
 
                         // 50/50 chance the agent turns into insurgents
                         if (random 1 < 0.5) then {
-	                        _group = ["Infantry",_faction] call ALIVE_fnc_configGetRandomGroup;
-	                        _recruits = [_group, [_pos,10,_size,1,0,0,0,[],[_pos]] call BIS_fnc_findSafePos, random(360), true, _faction] call ALIVE_fnc_createProfilesFromGroupConfig;
-	                        {[_x, "setActiveCommand", ["ALIVE_fnc_ambientMovement","spawn",[_size + 200,"SAFE",[0,0,0]]]] call ALIVE_fnc_profileEntity} foreach _recruits;
+                            if(random 1 < 0.1) then {
+                                _group = ["Motorized",_faction] call ALIVE_fnc_configGetRandomGroup;
+                            } else {
+                                _group = ["Infantry",_faction] call ALIVE_fnc_configGetRandomGroup;
+                            };
 
-	                        [_pos,_sides, 10] call ALiVE_fnc_updateSectorHostility;
-	                        [_pos,_allSides - _sides, -10] call ALiVE_fnc_updateSectorHostility;
+                            _recruits = [_group, [_pos,10,_size,1,0,0,0,[],[_pos]] call BIS_fnc_findSafePos, random(360), true, _faction] call ALIVE_fnc_createProfilesFromGroupConfig;
+                            {[_x, "setActiveCommand", ["ALIVE_fnc_ambientMovement","spawn",[_size + 200,"SAFE",[0,0,0]]]] call ALIVE_fnc_profileEntity} foreach _recruits;
 
-	                        _created = _created + 1;
-                         };
+                            [_pos, _sides, 10] call ALiVE_fnc_updateSectorHostility;
+                            [_pos, _allSides - _sides, -10] call ALiVE_fnc_updateSectorHostility;
+
+                            _created = _created + 1;
+                        };
                     };
                 };
 
