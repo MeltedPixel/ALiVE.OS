@@ -66,15 +66,32 @@ switch (_operation) do {
 
 		if (isNil QMOD(civInteractHandler)) then {
 			//-- Get settings
+			private ["_debug", "_factionEnemy", "_humanitarianDecrease", "_maxAllowAid", "_enableACEX", "_authorized", "_water", "_humrat"];
+
 			_debug = _logic getVariable "debug";
 			_factionEnemy = _logic getVariable "insurgentFaction";
-			private _authorized = (_logic getVariable "limitInteraction") call ALiVE_fnc_stringListToArray;
+			_humanitarianDecrease = parseNumber (_logic getVariable["humanitarianHostilityChance", "20"]);
+			_maxAllowAid = parseNumber (_logic getVariable["maxAllowAid", "3"]);
+			_enableACEX = _logic getVariable ["disableACEX", false];
+			_authorized = (_logic getVariable "limitInteraction") call ALiVE_fnc_stringListToArray;
 
 			//-- Create interact handler object
 			MOD(civInteractHandler) = [nil,"create"] call MAINCLASS;
 			[MOD(civInteractHandler), "Debug", _debug] call ALiVE_fnc_hashSet;
 			[MOD(civInteractHandler), "InsurgentFaction", _factionEnemy] call ALiVE_fnc_hashSet;
 			[MOD(civInteractHandler), "authorized", _authorized] call ALiVE_fnc_hashSet;
+
+			// -- Check ACEX Compat
+			_water = if (isClass(configfile >> "CfgPatches" >> "acex_main") && _enableACEX) then {"ACE_WaterBottle"} else {"ALiVE_Waterbottle"};
+			_humrat = if (isClass(configfile >> "CfgPatches" >> "acex_main") && _enableACEX) then {"ACE_Humanitarian_Ration"} else {"ALiVE_Humrat"};
+
+			// -- Store init data
+			_humanitarianData = [] call ALiVE_fnc_hashCreate;
+			[_humanitarianData, "waterItem", _water] call ALiVE_fnc_hashSet;
+			[_humanitarianData, "humratItem", _humrat] call ALiVE_fnc_hashSet;
+			[_humanitarianData, "hostilityDecrease", _humanitarianDecrease] call ALiVE_fnc_hashSet;
+			[_humanitarianData, "maxAllowAid", _maxAllowAid] call ALiVE_fnc_hashSet;
+			[MOD(civInteractHandler), "humanitarianData", _humanitarianData] call ALiVE_fnc_hashSet;
 		};
 	};
 
@@ -166,28 +183,28 @@ switch (_operation) do {
 		lbClear CIVINTERACT_QUESTIONLIST;
 
 		//-- Build question list
-		CIVINTERACT_QUESTIONLIST lbAdd "Where do you live?";
+		CIVINTERACT_QUESTIONLIST lbAdd  (localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_HOME");
 		CIVINTERACT_QUESTIONLIST lbSetData [0, "Home"];
 
-		CIVINTERACT_QUESTIONLIST lbAdd "What town you do live in";
+		CIVINTERACT_QUESTIONLIST lbAdd (localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_TOWN");
 		CIVINTERACT_QUESTIONLIST lbSetData [1, "Town"];
 
-		CIVINTERACT_QUESTIONLIST lbAdd "Have you seen any IED's lately?";
+		CIVINTERACT_QUESTIONLIST lbAdd (localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_IEDS");
 		CIVINTERACT_QUESTIONLIST lbSetData [2, "IEDs"];
 
-		CIVINTERACT_QUESTIONLIST lbAdd "Have you seen any insurgent activity lately?";
+		CIVINTERACT_QUESTIONLIST lbAdd (localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_INSURGENTS");
 		CIVINTERACT_QUESTIONLIST lbSetData [3, "Insurgents"];
 
-		CIVINTERACT_QUESTIONLIST lbAdd "Do you know the location of any insurgent hideouts?";
+		CIVINTERACT_QUESTIONLIST lbAdd (localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_HIDEOUTS");
 		CIVINTERACT_QUESTIONLIST lbSetData [4, "Hideouts"];
 
-		CIVINTERACT_QUESTIONLIST lbAdd "Have you seen any strange behavior lately?";
+		CIVINTERACT_QUESTIONLIST lbAdd (localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_STRANGEBEHAVIOR");
 		CIVINTERACT_QUESTIONLIST lbSetData [5, "StrangeBehavior"];
 
-		CIVINTERACT_QUESTIONLIST lbAdd "Do you support us?";
+		CIVINTERACT_QUESTIONLIST lbAdd (localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_OPINION");
 		CIVINTERACT_QUESTIONLIST lbSetData [6, "Opinion"];
 
-		CIVINTERACT_QUESTIONLIST lbAdd "What is the opinion of our forces in this area?";
+		CIVINTERACT_QUESTIONLIST lbAdd (localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_TOWNOPINION");
 		CIVINTERACT_QUESTIONLIST lbSetData [7, "TownOpinion"];
 
 		CIVINTERACT_QUESTIONLIST ctrlAddEventHandler ["LBSelChanged","
@@ -355,11 +372,11 @@ switch (_operation) do {
 			if (floor random 100 < (3 * _asked)) then {
 				[MOD(civInteractHandler),"UpdateHostility", [_civ, 10]] call MAINCLASS;
 				if (floor random 70 < (_asked * 5)) then {
-					_response1 = format [" *%1 grows visibly annoyed*", name _civ];
-					_response2 = format [" *%1 appears uninterested in the conversation*", name _civ];
-					_response3 = " Please leave me alone now.";
-					_response4 = " I do not want to talk to you anymore.";
-					_response5 = " Can I go now?";
+					_response1 = format [localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_IRRITATED_HOSTILE_1", name _civ];
+					_response2 = format [localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_IRRITATED_HOSTILE_2", name _civ];
+					_response3 = localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_IRRITATED_HOSTILE_3";
+					_response4 = localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_IRRITATED_HOSTILE_4";
+					_response5 = localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_IRRITATED_HOSTILE_5";
 					_response = [_response1, _response2, _response3, _response4, _response5] call BIS_fnc_selectRandom;
 					CIVINTERACT_RESPONSELIST ctrlSetText ((ctrlText CIVINTERACT_RESPONSELIST) + _response);
 				};
@@ -368,11 +385,11 @@ switch (_operation) do {
 			if (floor random 100 < (8 * _asked)) then {
 				[MOD(civInteractHandler),"UpdateHostility", [_civ, 10]] call MAINCLASS;
 				if (floor random 70 < (_asked * 5)) then {
-					_response1 = format [" *%1 looks anxious*", name _civ];
-					_response2 = format [" *%1 looks distracted*", name _civ];
-					_response3 = " Are you done yet?";
-					_response4 = " You ask too many questions.";
-					_response5 = " You need to leave now.";
+					_response1 = format [localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_IRRITATED_NOTHOSTILE_1", name _civ];
+					_response2 = format [localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_IRRITATED_NOTHOSTILE_2", name _civ];
+					_response3 = localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_IRRITATED_NOTHOSTILE_3";
+					_response4 = localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_IRRITATED_NOTHOSTILE_4";
+					_response5 = localize "STR_ALIVE_CIV_INTERACT_QUESTIONS_IRRITATED_NOTHOSTILE_5";
 					_response = [_response1, _response2, _response3,_response4, _response5] call BIS_fnc_selectRandom;
 					CIVINTERACT_RESPONSELIST ctrlSetText ((ctrlText CIVINTERACT_RESPONSELIST) + _response);
 				};
@@ -394,7 +411,8 @@ switch (_operation) do {
 			_civInfo params ["_homePos","_individualHostility","_townHostility","_name"];
 
 			_individualHostility = _individualHostility + _value;
-			_townHostilityValue = floor random 4;
+			// -- Check if the caller is trying to increase or decrease hostility
+			_townHostilityValue = if (_value < 0) then {floor random -4} else {floor random 4};
 			_townHostility = _townHostility + _townHostilityValue;
 			[_civData, "CivInfo", [_homePos, _individualHostility, _townHostility, _name]] call ALiVE_fnc_hashSet;
 
@@ -426,53 +444,53 @@ switch (_operation) do {
 
 		switch (toLower _activeCommand) do {
 			case "alive_fnc_cc_suicide": {
-				_activePlan1 = "carrying out a suicide bombing";
-				_activePlan2 = "strapping himself with explosives";
-				_activePlan3 = "planning a bombing";
-				_activePlan4 = "getting ready to bomb your forces";
-				_activePlan5 = "about to bomb your forces";
+				_activePlan1 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_SUICIDE_1";
+				_activePlan2 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_SUICIDE_2";
+				_activePlan3 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_SUICIDE_3";
+				_activePlan4 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_SUICIDE_4";
+				_activePlan5 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_SUICIDE_5";
 				_result = [_activePlan1,_activePlan2,_activePlan3,_activePlan4,_activePlan5] call BIS_fnc_selectRandom;
 			};
 			case "alive_fnc_cc_suicidetarget": {
-				_activePlan1 = "planning on carrying out a suicide bombing";
-				_activePlan2 = "strapping himself with explosives";
-				_activePlan3 = "planning a bombing";
-				_activePlan4 = "getting ready to bomb your forces";
-				_activePlan5 = "about to bomb your forces";
+				_activePlan1 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_SUICIDETARGET_1";
+				_activePlan2 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_SUICIDETARGET_2";
+				_activePlan3 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_SUICIDETARGET_3";
+				_activePlan4 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_SUICIDETARGET_4";
+				_activePlan5 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_SUICIDETARGET_5";
 				_result = [_activePlan1,_activePlan2,_activePlan3,_activePlan4,_activePlan5] call BIS_fnc_selectRandom;
 			};
 			case "alive_fnc_cc_rogue": {
-				_activePlan1 = "storing a weapon in his house";
-				_activePlan2 = "stockpiling weapons";
-				_activePlan3 = "planning on shooting a patrol";
-				_activePlan4 = "looking for patrols to shoot at";
-				_activePlan5 = "paid to shoot at your forces";
+				_activePlan1 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_ROGUE_1";
+				_activePlan2 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_ROGUE_2";
+				_activePlan3 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_ROGUE_3";
+				_activePlan4 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_ROGUE_4";
+				_activePlan5 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_ROGUE_5";
 				_result = [_activePlan1,_activePlan2,_activePlan3,_activePlan4,_activePlan5] call BIS_fnc_selectRandom;
 			};
 			case "alive_fnc_cc_roguetarget": {
-				_activePlan1 = "storing a weapon in his house";
-				_activePlan2 = "stockpiling weapons";
-				_activePlan3 = "planning on shooting a patrol";
-				_activePlan4 = "looking for somebody to shoot at";
-				_activePlan5 = "paid to shoot at your forces";
+				_activePlan1 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_ROGUETARGET_1";
+				_activePlan2 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_ROGUETARGET_2";
+				_activePlan3 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_ROGUETARGET_3";
+				_activePlan4 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_ROGUETARGET_4";
+				_activePlan5 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_ROGUETARGET_5";
 				_result = [_activePlan1,_activePlan2,_activePlan3,_activePlan4,_activePlan5] call BIS_fnc_selectRandom;
 			};
 			case "alive_fnc_cc_sabotage": {
-				_activePlan1 = "planning on sabotaging a building";
-				_activePlan2 = "blowing up a building";
-				_activePlan3 = "planting explosives nearby";
-				_activePlan4 = "getting ready to plant explosives";
-				_activePlan5 = "paid to shoot at your forces";
+				_activePlan1 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_SABOTAGE_1";
+				_activePlan2 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_SABOTAGE_2";
+				_activePlan3 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_SABOTAGE_3";
+				_activePlan4 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_SABOTAGE_4";
+				_activePlan5 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_SABOTAGE_5";
 				_result = [_activePlan1,_activePlan2,_activePlan3,_activePlan4,_activePlan5] call BIS_fnc_selectRandom;
 			};
 			case "alive_fnc_cc_getweapons": {
-				_activePlan1 = "retrieving weapons from a nearby weapons depot";
-				_activePlan2 = "planning on joining the insurgents";
-				_activePlan3 = "getting ready to go to a nearby insurgent recruitment center";
-				_activePlan4 = "getting ready to retrieve weapons from a cache";
-				_activePlan5 = "paid to attack your forces";
-				_activePlan6 = "forced to join the insurgents";
-				_activePlan7 = "preparing to attack your forces";
+				_activePlan1 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_GETWEAPONS_1";
+				_activePlan2 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_GETWEAPONS_2";
+				_activePlan3 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_GETWEAPONS_3";
+				_activePlan4 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_GETWEAPONS_4";
+				_activePlan5 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_GETWEAPONS_5";
+				_activePlan6 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_GETWEAPONS_6";
+				_activePlan7 = localize "STR_ALIVE_CIV_INTERACT_ACTIVEPLAN_GETWEAPONS_7";
 				_result = [_activePlan1,_activePlan2,_activePlan3,_activePlan4,_activePlan5] call BIS_fnc_selectRandom;
 			};
 		};
@@ -783,6 +801,40 @@ switch (_operation) do {
 		};
 	};
 
+	case "giveItem": {
+		_arguments params ["_itemType"];
+		private ["_civ", "_humanitarian", "_item", "_decreaseChance", "_maxAllowAid", "_consumed"];
+
+		_civ = [_logic, "Civ"] call ALiVE_fnc_hashGet;
+		_humanitarian = [_logic, "humanitarianData"] call ALiVE_fnc_hashGet;
+		_item = [_humanitarian, _itemType] call ALiVE_fnc_hashGet;
+		_decreaseChance = [_humanitarian, "hostilityDecrease"] call ALiVE_fnc_hashGet;
+		_maxAllowAid = [_humanitarian, "maxAllowAid"] call ALiVE_fnc_hashGet;
+
+		// Check amount of aid already received
+		_consumed = _civ getVariable[QGVAR(consumedItems), 0];
+		if (_consumed >= _maxAllowAid) exitWith {
+			["openSideSmall",0.3] call ALIVE_fnc_displayMenu; 
+			["setSideSmallText","This Civilian has already received the max allowed aid!"] spawn ALIVE_fnc_displayMenu;
+		};
+
+		// Ensure item is in the inventory & remove it
+		if !(_item in items player) exitWith {
+			["openSideSmall",0.3] call ALIVE_fnc_displayMenu; 
+			["setSideSmallText","You do not have an item provide this Civilian"] spawn ALIVE_fnc_displayMenu;
+		};
+		player removeItem _item;
+
+		_civ setVariable[QGVAR(consumedItems), (_consumed + 1)];
+		[_civ] spawn {
+			params ["_civ"];
+			player playAction "putdown"; sleep 0.2; _civ playAction "putdown";
+		};
+
+		if (_decreaseChance > random 100) then {
+			[_logic, "UpdateHostility", [_civ, -7]] remoteExecCall [QUOTE(MAINCLASS),2]
+		};
+	};
 };
 
 

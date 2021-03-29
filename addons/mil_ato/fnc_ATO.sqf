@@ -263,6 +263,13 @@ ALiVE_fnc_getAircraftRoles = {
     private _attack = false;
     private _fighter = false;
 
+    private _maxSpeed = _class call ALIVE_fnc_configGetVehicleMaxSpeed;
+
+    // Enable all helos to act as Recon platforms
+    if (_class isKindOf "Helicopter" && _maxSpeed > 200) then {
+        _recce = true;
+    };
+
     // Go through weapons and check for guns and cameras
     private _weapons = _class call BIS_fnc_weaponsEntityType;
     {
@@ -845,7 +852,8 @@ switch(_operation) do {
 
                                 // Get nearest building position
                                 if !(_isOnCarrier) then {
-                                    _crewPos = selectRandom ((nearestBuilding _position) buildingPos -1);
+                                    // Select indoor building position
+                                    _crewPos = selectRandom (((nearestBuilding _position) buildingPos -1) select {lineIntersects [AGLToASL _x, (AGLToASL _x) vectorAdd [0,0,10]]});
                                     if (isNil "_crewPos") then {
                                         _crewPos = _position getpos [10 + (random 15), random 360];
                                     };
@@ -1268,6 +1276,10 @@ switch(_operation) do {
                  _airClusters = [(ALIVE_clustersMil select 2), _airspace] call ALIVE_fnc_clustersInsideMarker;
             };
 
+            if (count _airClusters == 0) exitWith {
+                ["ALIVE ATO - Warning no usable military buildings within airspace found, the ATO module for %1 may be incorrectly configured.", _faction] call ALIVE_fnc_dumpR;
+            };
+
             // Select the nearest cluster to the module or use Aircraft Carrier
             private _position = getposATL _logic;
 
@@ -1609,17 +1621,10 @@ switch(_operation) do {
                     };
                 } foreach _moduleFactions;
 
-                // Get an initial list of air assets from OPCOM
-                private _moduleAir = [_module,"air",[]] call ALiVE_fnc_HashGet;
-                _modulesAir append _moduleAir;
-
-                if (_debug) then {
-                    ["ALIVE ATO %1 OPCOM possible air assets: %2", _logic, _moduleAir] call ALiVE_fnc_dump;
-                };
-
-                // Get objectives?
+                // Get objectives
                 private _objectives = [_module,"objectives"] call ALiVE_fnc_hashGet;
                 // (_objectives select 0) call ALIVE_fnc_inspectHash;
+
             } forEach _modules;
 
             [_logic, "factions", _modulesFactions] call MAINCLASS;
@@ -1664,7 +1669,7 @@ switch(_operation) do {
                 } foreach _profileIDs;
 
                 if (_debug) then {
-                        ["ALIVE ATO %1 OPCOM overall air assets: %2", _logic, _modulesAir] call ALiVE_fnc_dump;
+                        ["ALIVE ATO %1 OPCOM has %3 air assets: %2", _logic, _modulesAir, count _modulesAir] call ALiVE_fnc_dump;
                 };
 
                 // Go through all profiles and register them ---------------------------------------------------------------------------------------------------
@@ -1705,7 +1710,6 @@ switch(_operation) do {
 
                     private _baseCluster = [_logic, "currentBase"] call MAINCLASS;
                     private _center = [_baseCluster,"center"] call ALiVE_fnc_hashGet;
-                    // [_baseCluster, "debug", true] call ALIVE_fnc_cluster;
 
                     // Set airspace where base and assets are located
                     private _baseAirspace = _airspace select 0;
@@ -1739,16 +1743,19 @@ switch(_operation) do {
                         {
                             private _pos = [0,0,0];
                             private _dir = 0;
-                            private _helipad = nil;
+                            private _helipad = objNull;
                             if (_x isKindOf "HeliH") then {
                                 _pos = position _x;
                                 _dir = direction _x;
                                 _helipad = _x;
                             } else {
-                                _helipad = nearestObject [position _x, "HeliH"];
+                                private _helipads = nearestObjects [position _x, ["HeliH"], 250];
+                                if (count _helipads > 0) then {
+                                    _helipad = _helipads select 0;
+                                };
                             };
 
-                            if (!isNil "_helipad") then {
+                            if (!isNull _helipad) then {
 
                                 _pos = position _helipad;
                                 _dir = getdir _helipad;
@@ -1760,6 +1767,10 @@ switch(_operation) do {
                                 if (count _nearbyObj == 0 && count _nearbyProfiles == 0) then {
 
                                     private _vehicleClass = _heliClasses call BIS_fnc_selectRandom;
+
+                                    if(_debug) then {
+                                        ["ALIVE ATO (%2) - Found helipad at %3 adding %1", _vehicleClass, _faction, _pos] call ALIVE_fnc_dump;
+                                    };
 
                                     private _tmp = [_vehicleClass,_side,_faction,"CAPTAIN",_pos,_dir,false,_faction,false] call ALIVE_fnc_createProfilesCrewedVehicle;
                                     {
@@ -1775,12 +1786,20 @@ switch(_operation) do {
                         // IF there are no helipads available, we want atleast 1 chopper. Spawn a composition
                         if (count _aprofiles == 0) then {
                             // Spawn a heliport
+                            private _validPos = true;
                             private _pos = [_baseCluster,"center"] call ALiVE_fnc_HashGet;
+
                             private _size = [_baseCluster,"size",150] call ALiVE_fnc_HashGet;
                             private _heliport = nil;
                             private _flatPos = [_pos,_size,30] call ALiVE_fnc_findFlatArea;
 
-                            if (isNil QMOD(COMPOSITIONS_LOADED)) then {
+                            private _position = _flatpos;
+
+                            if (str(_flatPos) == "[0,0,0]") then {
+                                _validPos = false;
+                            };
+
+                            if (isNil QMOD(COMPOSITIONS_LOADED) && _validPos) then {
 
                                 // Get a composition
                                 private _compType = "Military";
@@ -1814,6 +1833,8 @@ switch(_operation) do {
 
                                     if !(isNull _helipad) then {
 
+                                        _position = position _helipad;
+
                                         // remove any pre-placed aircraft on composition?
                                         private _nearbyObj = nearestObjects [position _helipad, ["Helicopter"], 20];
                                         if (count _nearbyObj > 0) then {
@@ -1822,16 +1843,25 @@ switch(_operation) do {
                                             }foreach _nearbyObj;
                                         };
 
-                                        private _vehicleClass = selectRandom _heliClasses;
-
-                                        private _tmp = [_vehicleClass,_side,_faction,"CAPTAIN",position _helipad,direction _helipad,true,_faction,false] call ALIVE_fnc_createProfilesCrewedVehicle;
-                                        {
-                                            // _x call ALIVE_fnc_inspectHash;
-                                            if ([_x,"type"] call ALiVE_fnc_hashGet == "entity") then {
-                                                _aprofiles pushback ([_x,"profileID"] call ALiVE_fnc_hashGet);
-                                            };
-                                        } foreach _tmp;
+                                    } else {
+                                        // add a bloody helipad TODO: improve placement
+                                        "Land_HelipadEmpty_F" createVehicle _flatPos;
                                     };
+
+                                    private _vehicleClass = selectRandom _heliClasses;
+
+                                    if(_debug) then {
+                                        ["ALIVE ATO %1 (%2) - Created helipad at %3 adding %1", _vehicleClass, _faction, _position] call ALIVE_fnc_dump;
+                                    };
+
+                                    private _tmp = [_vehicleClass,_side,_faction,"CAPTAIN",_position,_direct,true,_faction,false] call ALIVE_fnc_createProfilesCrewedVehicle;
+                                    {
+                                        // _x call ALIVE_fnc_inspectHash;
+                                        if ([_x,"type"] call ALiVE_fnc_hashGet == "entity") then {
+                                            _aprofiles pushback ([_x,"profileID"] call ALiVE_fnc_hashGet);
+                                        };
+                                    } foreach _tmp;
+
                                 };
                             };
                         };
@@ -1885,6 +1915,22 @@ switch(_operation) do {
                                     if (([typeOf _x, "hangar"] call CBA_fnc_find != -1 || [typeOf _x, "Hangar"] call CBA_fnc_find != -1) && _vehicleClass iskindof "Plane") then {
                                         _posi = position _x;
                                         _dire = direction _x;
+
+                                        // Handle reversed hangars
+                                        if (typeof _x in ALIVE_problematicHangarBuildings  || str(_posi) in ALIVE_problematicHangarBuildings) then {
+                                            // reverse the direction of planes
+                                            _dire = _dire + 180;
+
+                                        };
+
+                                        // open all doors
+                                        private _numOfDoors = getNumber (configfile >> "CfgVehicles" >> typeOf _x >> "numberOfDoors");
+                                        if (_numOfDoors > 0) then {
+                                            for "_i" from 1 to _numOfDoors do {
+                                                [_x, _i, 1] call BIS_fnc_door;
+                                            };
+                                        }
+
                                     } else {
 
                                         // find a taxiway
@@ -2652,7 +2698,20 @@ switch(_operation) do {
 
                 // Validate airspace
                 if (_airspace isEqualType "" && {_airspace == ""}) then {
-                    _airpsace = ([_logic, "airspace"] call MAINCLASS) select 0;
+                    _airspace = ([_logic, "airspace"] call MAINCLASS) select 0;
+                };
+
+                // Check to see if airspace position has been provided, if so set airspace
+                if (_airspace isEqualType []) then {
+                    private _tmpAirspace = "";
+                    {
+                        if (_airspace inArea _x) exitWith {
+                            _tmpAirspace = _x;
+                        };
+                    } foreach (([_logic, "airspaceAssets"] call MAINCLASS) select 1);
+                    _airspace = _tmpAirspace;
+                    _eventData set [3,_airspace];
+                    [_event,"data",_eventData] call ALiVE_fnc_hashSet;
                 };
 
                 // Check if this module is operating and has assets
@@ -2979,7 +3038,8 @@ switch(_operation) do {
                             private _tmp = [];
 
                             if (_heli == 1) then {
-                                _tmp = [_vehicleClass,_side,_faction,"CAPTAIN",_position,_dir,false,_faction,false] call ALIVE_fnc_createProfilesCrewedVehicle;
+                                private _createdProfiles = [_vehicleClass,_side,_faction,"CAPTAIN",_position,_dir,false,_faction,false] call ALIVE_fnc_createProfilesCrewedVehicle;
+                                _tmp = _createdProfiles select (_createdProfiles findIf { ([_x,"type"] call ALiVE_fnc_hashGet) == "vehicle" });
                             };
 
                             if (_plane == 1) then {
@@ -3879,19 +3939,26 @@ switch(_operation) do {
                         private _logEvent = ['ATO_RESPONSE', [_requestID,_playerID],"Logistics","REQUEST_LOST"] call ALIVE_fnc_event;
                         [ALIVE_eventLog, "addEvent",_logEvent] call ALIVE_fnc_eventLog;
                     };
+
                     // set state to event complete
                     [_event, "state", "eventComplete"] call ALIVE_fnc_hashSet;
                     [_eventQueue, _eventID, _event] call ALIVE_fnc_hashSet;
 
-                    private _airportID = [_aircraft,"airportID",[_startPosition] call ALiVE_fnc_getNearestAirportID] call ALiVE_fnc_hashGet;
-                    // if plane check to see if runway is busy, wait
-                    private _airportBusy = [_airports, _airportID] call ALiVE_fnc_hashGet;
+                    if (_isPlane) then {
 
-                    if (_airportBusy) then {
+                        private _airportID = [_aircraft,"airportID",[_startPosition] call ALiVE_fnc_getNearestAirportID] call ALiVE_fnc_hashGet;
 
-                        // Mark airport as no longer busy
-                        [_airports, _airportID, false] call ALiVE_fnc_hashSet;
-                        [_logic,"runways",_airports] call MAINCLASS;
+                        // if plane check to see if runway is busy, wait
+                        private _airportBusy = [_airports, _airportID] call ALiVE_fnc_hashGet;
+
+                        if (isNil "_airportBusy") then {_airportBusy = false};
+
+                        if (_airportBusy) then {
+
+                            // Mark airport as no longer busy
+                            [_airports, _airportID, false] call ALiVE_fnc_hashSet;
+                            [_logic,"runways",_airports] call MAINCLASS;
+                        };
                     };
 
                 };
@@ -4207,10 +4274,10 @@ switch(_operation) do {
                     };
 
                     // Wait for driver or time expiration
-                    if ( !(isNUll (driver _vehicle)) || {time > (_eventTime + ((_eventDuration/3)*60))} || {_isOnCarrier}) then {
+                    if ( !(isNull (driver _vehicle)) || {time > (_eventTime + ((_eventDuration/3)*60))} || {_isOnCarrier}) then {
 
                         // Check driver is onboard if not put the crew in there
-                        if (isNUll (driver _vehicle) || {time > (_eventTime + ((_eventDuration/3)*60))} ) then {
+                        if (isNull (driver _vehicle) || {time > (_eventTime + ((_eventDuration/3)*60))} ) then {
                             if (_debug) then {
                                 ["ALIVE ATO %3 - aircraft (%1 - %2) is waiting on the pilot in group %4 with the units: %5.", _profileID, typeof _vehicle, _logic, _grp, units _grp] call ALIVE_fnc_dump;
                             };
@@ -4223,7 +4290,7 @@ switch(_operation) do {
                         };
 
                         // Ok driver should be in vehicle now
-                        if !(isNUll (driver _vehicle)) then {
+                        if !(isNull (driver _vehicle)) then {
 
                             // DEBUG -------------------------------------------------------------------------------------
                             if(_debug) then {
@@ -4295,13 +4362,16 @@ switch(_operation) do {
                                 case "CAS": {
                                     // SAD waypoint, if targets then DESTROY
                                     if ( count _eventTargets == 1 && !(isNull (_eventTargets select 0)) ) then {
+                                        _wp waypointAttachVehicle (_eventTargets select 0);
                                         _wp setWaypointType "DESTROY";
                                         _grp reveal (_eventTargets select 0);
-                                        _wp waypointAttachVehicle (_eventTargets select 0);
+                                        (units _grp) doTarget (_eventTargets select 0);
+                                        _wp setWaypointCompletionRadius _eventHeight;
                                     } else {
                                         _wp setWaypointType "SAD";
                                         _wp setWaypointPosition [_eventPosition, 0];
                                         _wp setWaypointTimeout [_eventDuration,_eventDuration,_eventDuration];
+
                                     };
                                 };
                                 case "OCA";
@@ -4363,8 +4433,10 @@ switch(_operation) do {
                                             };
                                         } foreach _eventTargets;
                                     } else {
-                                        _wp setWaypointType "DESTROY";
                                         _wp waypointAttachVehicle _targetObject;
+                                        _wp setWaypointType "DESTROY";
+                                        (units _grp) doTarget _targetObject;
+                                        _wp setWaypointCompletionRadius _eventHeight;
                                     };
 
                                 };
@@ -4601,9 +4673,7 @@ switch(_operation) do {
                     [_eventQueue, _eventID, _event] call ALIVE_fnc_hashSet;
                 };
 
-
                 private _profileID = [_aircraft,"profileID"] call ALiVE_fnc_hashGet;
-
                 private _missionComplete = false;
                 private _healthIssue = false;
                 private _profile = [ALIVE_profileHandler, "getProfile",_profileID] call ALIVE_fnc_profileHandler;
@@ -4612,12 +4682,25 @@ switch(_operation) do {
                 [_aircraft,"currentPos", position _vehicle] call ALiVE_fnc_hashSet;
 
                 private _radioChoice = "STR_ALIVE_ATO_RETURN";
+
+                // Check to see if unit still has waypoints
                 if (count waypoints (group _vehicle) > 0) then {
                     // Check waypoint
                     if (time > (_eventTime + (_eventDuration*60)) ) then {
                         _missionComplete = true;
                     };
                 } else {
+                    if (_debug) then {
+                        ["ALIVE ATO %3 - Aircraft (%1 - %2) has no more waypoints.", _profileID, typeof _vehicle, _logic] call ALIVE_fnc_dump;
+                    };
+                    _missionComplete = true;
+                };
+
+                // Check to see if target is still there
+                if (count _eventTargets > 0 && isNull (_eventTargets select 0)) then {
+                    if (_debug) then {
+                        ["ALIVE ATO %3 - Aircraft (%1 - %2) has no valid target.", _profileID, typeof _vehicle, _logic] call ALIVE_fnc_dump;
+                    };
                     _missionComplete = true;
                 };
 
@@ -4638,11 +4721,14 @@ switch(_operation) do {
                 // Check Weapons
                 // Calculate % of ammo
                 private _ammoArray = _vehicle call ALiVE_fnc_vehicleGetAmmo;
-                private _avail = 0;
-                {
-                    _avail = _avail + ((_x select 1)/(_x select 2));
-                } foreach _ammoArray;
-                private _ammo = _avail / count _ammoArray;
+                private _ammo = 0;
+                if (count _ammoArray > 0) then {
+                    private _avail = 0;
+                    {
+                        _avail = _avail + ((_x select 1)/(_x select 2));
+                    } foreach _ammoArray;
+                    _ammo = _avail / count _ammoArray;
+                };
                 if (_ammo < 0.1) then {
                     _healthIssue = true;
                     _radioChoice = "STR_ALIVE_ATO_RETURN_AMMO";

@@ -186,7 +186,7 @@ switch(_operation) do {
             ASSERT_TRUE(typeName _args == "BOOL",str _args);
 
             _result = _args;
-        };
+    };
     case "placeHelis": {
         if (typeName _args == "BOOL") then {
             _logic setVariable ["placeHelis", _args];
@@ -520,7 +520,6 @@ switch(_operation) do {
                 [_logic, "objectives", _clusters + _landclusters] call MAINCLASS;
 
 
-
                 //Move on to special objectives
                 if !(isnil "ALIVE_clustersMilHQ") then {
                     _HQClusters = ALIVE_clustersMilHQ select 2;
@@ -565,11 +564,12 @@ switch(_operation) do {
 
                 // DEBUG -------------------------------------------------------------------------------------
                 if(_debug) then {
-                    ["ALIVE MP - Startup completed"] call ALIVE_fnc_dump;
-                    ["ALIVE MP - Count clusters %1",count _clusters] call ALIVE_fnc_dump;
-                    ["ALIVE MP - Count land clusters %1",count _landClusters] call ALIVE_fnc_dump;
-                    ["ALIVE MP - Count air clusters %1",count _airClusters] call ALIVE_fnc_dump;
-                    ["ALIVE MP - Count heli clusters %1",count _heliClusters] call ALIVE_fnc_dump;
+                    ["ALIVE MP %1 - Startup completed", _faction] call ALIVE_fnc_dump;
+                    ["ALIVE MP %2 - Count clusters %1",count _clusters, _faction] call ALIVE_fnc_dump;
+                    ["ALIVE MP %2 - Count HQ clusters %1",count _HQClusters, _faction] call ALIVE_fnc_dump;
+                    ["ALIVE MP %2 - Count land clusters %1",count _landClusters, _faction] call ALIVE_fnc_dump;
+                    ["ALIVE MP %2 - Count air clusters %1",count _airClusters, _faction] call ALIVE_fnc_dump;
+                    ["ALIVE MP %2 - Count heli clusters %1",count _heliClusters, _faction] call ALIVE_fnc_dump;
                     [] call ALIVE_fnc_timer;
                 };
                 // DEBUG -------------------------------------------------------------------------------------
@@ -580,7 +580,7 @@ switch(_operation) do {
                         // start placement
                         [_logic, "placement"] call MAINCLASS;
                     }else{
-                        ["ALIVE MP [%1] - Warning no locations found for placement, you need to include military locations within the TAOR marker",_faction] call ALIVE_fnc_dumpR;
+                        ["ALIVE MP [%1] - Warning no locations found for placement, you need to include military locations within the TAOR marker: %2",_faction, _taor] call ALIVE_fnc_dumpR;
 
                         // set module as started
                         _logic setVariable ["startupComplete", true];
@@ -906,6 +906,7 @@ switch(_operation) do {
                             _vehicleClass = (selectRandom _supplyClasses);
 
                             if(random 1 > 0.6) then {
+
                                 _box = createVehicle [_vehicleClass, _position, [], 0, "NONE"];
                                 _countSupplies = _countSupplies + 1;
                             };
@@ -978,7 +979,7 @@ switch(_operation) do {
 
                                 if !(_position isEqualTo [0,0,0]) then {
 
-    	                            if(random 1 > 0.8) then {
+    	                            if(random 1 > 0.2) then {
     	                                [_vehicleClass,_side,_faction,_position,_direction,false,_faction] call ALIVE_fnc_createProfileVehicle;
 
     	                                _countProfiles = _countProfiles + 1;
@@ -1055,7 +1056,23 @@ switch(_operation) do {
                                 // Find safe place to put aircraft
                                 private ["_pavement","_runway"];
                                 if ( ([tolower(typeOf _x), "hangar"] call CBA_fnc_find != -1) && !_large) then {
+
                                     _direction = direction _x;
+
+                                    // Handle reversed hangars
+                                    if (typeof _x in ALIVE_problematicHangarBuildings || str(_position) in ALIVE_problematicHangarBuildings) then {
+                                        // reverse the direction of planes
+                                        _direction = _direction + 180;
+                                    };
+
+                                    // open all doors of hangar
+                                    private _numOfDoors = getNumber (configfile >> "CfgVehicles" >> typeOf _x >> "numberOfDoors");
+                                    if (_numOfDoors > 0) then {
+                                        for "_i" from 1 to _numOfDoors do {
+                                            [_x, _i, 1] call BIS_fnc_door;
+                                        };
+                                    }
+
                                 } else { // find a taxiway
                                     _runway = [];
                                     {
